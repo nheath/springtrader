@@ -18,6 +18,9 @@ build:
 
 deploy:
   helm:
+    flags:
+      upgrade: ["--timeout", "600"]
+      install: ["--timeout", "600"]
     releases:
       - name: springtrader 
         chartPath: ./charts/springtrader
@@ -36,3 +39,4 @@ profiles:
     path: /deploy/helm/releases/0/setValues
     value: 
       storageClassName: microk8s-hostpath
+
