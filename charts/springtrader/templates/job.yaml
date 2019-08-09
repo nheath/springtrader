@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: generate-schema
+spec:
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      initContainers:
+      - name: wait-for-nanodbserver
+        image: bitnami/kubectl:1.15
+        args: ['wait','--for=condition=ready','pod/nanodbserver-0','--timeout=300s']
+      containers:
+      - name: generate-schema
+        image: {{ .Values.image }}
+        command: ['sh','-c','./createSqlfSchema']
+        env:
+        - name: GROOVY_HOME
+          value: '/usr/bin'
+        resources:
+          requests:
+            memory: "192Mi"
+            cpu: "32m"
+          limits:
+            memory: "384Mi"
+            cpu: "256m"
+      restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: generate-data
+spec:
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      initContainers:
+      - name: wait-for-springtrader
+        image: bitnami/kubectl:1.15
+        args: ['wait','--for=condition=available','deploy/springtrader','--timeout=300s']
+      containers:
+      - name: generate-data
+        image: {{ .Values.image }}
+        command: ["/bin/sh","-c"]
+        args: ["sed -i 's/localhost/springtrader/g' nanotrader.sqlf.properties && ./generateData"]
+        env:
+        - name: GROOVY_HOME
+          value: '/usr/bin'
+        resources:
+          requests:
+            memory: "192Mi"
+            cpu: "32m"
+          limits:
+            memory: "384Mi"
+            cpu: "256m"
+      restartPolicy: OnFailure
