@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nanodbserver
+spec:
+  selector:
+    matchLabels:
+      app: nanodbserver # has to match .spec.template.metadata.labels
+  serviceName: "nanodbserver"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: nanodbserver # has to match .spec.selector.matchLabels
+    spec:
+      terminationGracePeriodSeconds: 10
+      initContainers:
+      - name: sqlf-setup
+        image: alpine
+        command: ["/bin/sh","-c"]
+        args: ["mkdir -p /sqlf-data/locator1 /sqlf-data/server1"]
+        volumeMounts:
+        - mountPath: /sqlf-data
+          name: sqlf-data
+
+      containers:
+      - name: sqlflocator
+        image: {{ .Values.sqlfdb }}
+        command: ["/bin/sh","-c"]
+        args: ["sqlf locator start \
+        -peer-discovery-address=127.0.0.1 \
+        -peer-discovery-port=3241 \
+        -dir=/sqlf-data/locator1 \
+        -client-port=1527 \
+        -client-bind-address=0.0.0.0 \
+        -bind-address=127.0.0.1 \
+        && tail -f /sqlf-data/locator1/sqlflocator.log"]
+        resources:
+          requests:
+            memory: "384Mi"
+            cpu: "96m"
+          limits:
+            memory: "512Mi"
+            cpu: "256m"
+        strategy: 
+          type: recreate
+        volumeMounts:
+        - mountPath: /sqlf-data
+          name: sqlf-data
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - grep "started and ready to accept connections" /sqlf-data/locator1/sqlflocator.log 
+          initialDelaySeconds: 5
+          periodSeconds: 15
+      - name: sqlfserver
+        image: {{ .Values.sqlfdb }}
+        command: ["/bin/sh","-c"]
+        args: ["sqlf server start \
+        -dir=/sqlf-data/server1 \
+        -client-bind-address=0.0.0.0 \
+        -client-port=1528 \
+        -locators=127.0.0.1[3241] \
+        -bind-address=127.0.0.1 \
+        && tail -f /sqlf-data/server1/sqlfserver.log"]
+        resources:
+          requests:
+            memory: "192Mi"
+            cpu: "96m"
+          limits:
+            memory: "384Mi"
+            cpu: "256m"
+        volumeMounts:
+        - mountPath: /sqlf-data
+          name: sqlf-data
+
+  volumeClaimTemplates:
+  - metadata:
+      name: sqlf-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: {{ .Values.storageClassName | default "gp2" }}
+      resources:
+        requests:
+          storage: "2Gi"

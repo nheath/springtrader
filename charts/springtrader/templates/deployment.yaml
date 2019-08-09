@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: springtrader
+  labels:
+    app: springtrader
+    version: {{ .Values.version }}
+spec:
+  selector:
+    matchLabels:
+      app: springtrader
+  template:
+    metadata:
+      labels:
+        app: springtrader
+        version: {{ .Values.version }}
+    spec:
+      initContainers:
+      - name: wait-for-nanodbserver
+        image: bitnami/kubectl:1.15
+        args: ['wait','--for=condition=ready','pod/nanodbserver-0','--timeout=300s']
+      - name: wait-for-schema
+        image: bitnami/kubectl:1.15
+        args: ['wait','--for=condition=complete','job/generate-schema','--timeout=300s']
+      containers:
+      - name: springtrader
+        image: {{ .Values.image }}
+        resources:
+          requests:
+            memory: "1500Mi"
+            cpu: "256m"
+          limits:
+            memory: "2000Mi"
+            cpu: "1"
+        env:
+        - name: GROOVY_HOME
+          value: '/usr/bin'
+        livenessProbe:
+          httpGet:
+            path: /spring-nanotrader-web/
+            port: 8080
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /spring-nanotrader-web/
+            port: 8080
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+      - name: rabbitmq
+        image: rabbitmq
+        resources:
+          requests:
+            memory: "96Mi"
+            cpu: "16m"
+          limits:
+            memory: "256Mi"
+            cpu: "100m"
